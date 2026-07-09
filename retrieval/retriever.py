@@ -1,14 +1,10 @@
 from sentence_transformers import SentenceTransformer
 import chromadb
+import config
 
-VECTOR_STORE_DIR = "vector_store"
-COLLECTION_NAME = "research_agent_10k"
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
-
-# Load once at module level, not per-query, since loading the model is slow
-model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-client = chromadb.PersistentClient(path=VECTOR_STORE_DIR)
-collection = client.get_collection(COLLECTION_NAME)
+model = SentenceTransformer(config.EMBEDDING_MODEL_NAME)
+client = chromadb.PersistentClient(path=config.VECTOR_STORE_DIR)
+collection = client.get_collection(config.COLLECTION_NAME)
 
 
 def retrieve(query: str, top_k: int = 5, ticker_filter: str = None) -> list[dict]:

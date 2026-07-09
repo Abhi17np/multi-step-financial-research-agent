@@ -1,4 +1,10 @@
 
-
+.env
+venv/
+__pycache__/
+*.pyc
+vector_store/
 #Ignore vscode AI rules
 .github\instructions\codacy.instructions.md
+#$env:
+venv311/

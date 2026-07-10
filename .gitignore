@@ -1,4 +1,3 @@
-
 .env
 venv/
 __pycache__/
@@ -8,3 +7,8 @@ vector_store/
 .github\instructions\codacy.instructions.md
 #$env:
 venv311/
+
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep

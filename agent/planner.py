@@ -5,31 +5,44 @@ import json
 client = genai.Client(api_key=config.GEMINI_API_KEY)
 MODEL_NAME = config.GEMINI_MODEL_NAME
 
-VALID_TICKERS = ["CRM", "NOW", "WDAY", "ADBE"]
+
+def load_registry():
+    with open("data/processed/documents_registry.json", "r") as f:
+        return json.load(f)
+
+
+REGISTRY = load_registry()
+VALID_TICKERS = {entry["ticker"] for entry in REGISTRY}
+VALID_YEARS_BY_TICKER = {}
+for entry in REGISTRY:
+    VALID_YEARS_BY_TICKER.setdefault(entry["ticker"], set()).add(entry["fiscal_year"])
+
+# Build a compact company reference list for the prompt (ticker: company name)
+COMPANY_LIST = "\n".join(f"- {e['ticker']} = {e['company']} (fiscal year {e['fiscal_year']} available)" for e in REGISTRY)
 
 
 def build_planner_prompt(query: str) -> str:
     return f"""You are a query planning assistant for a financial research system.
 
-Your job: break down the user's question into simpler sub-questions, each focused on ONE company.
+Your job: break down the user's question into simpler sub-questions, each focused on ONE company and ONE fiscal year.
 
-Available companies (tickers): {", ".join(VALID_TICKERS)}
-- CRM = Salesforce
-- NOW = ServiceNow
-- WDAY = Workday
-- ADBE = Adobe
+Companies and fiscal years available in this system:
+{COMPANY_LIST}
+
+IMPORTANT: This system ONLY has data for the companies/years listed above. If the user's question
+mentions a company NOT in this list, or a fiscal year not available for that company, set that
+sub-question's ticker to "UNSUPPORTED" instead of guessing.
 
 Rules:
 - If the question is about only one company, return just ONE sub-question.
 - If the question compares multiple companies, create one sub-question PER company.
-- Each sub-question must be a complete, standalone question (don't just say "same for X" - rewrite it fully).
-- ticker must be one of: {", ".join(VALID_TICKERS)}
-- Return ONLY valid JSON, no other text, no markdown code fences, matching this exact schema:
+- If no fiscal year is mentioned, use the most recent year available for that company.
+- Each sub-question must be a complete, standalone question.
+- Return ONLY valid JSON, no markdown fences, matching this exact schema:
 
 {{
   "sub_questions": [
-    {{"question": "...", "ticker": "..."}},
-    {{"question": "...", "ticker": "..."}}
+    {{"question": "...", "ticker": "...", "fiscal_year": "..."}}
   ]
 }}
 
@@ -40,33 +53,24 @@ JSON:"""
 
 def plan(query: str) -> list[dict]:
     prompt = build_planner_prompt(query)
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt
-    )
+    response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
 
     raw_text = response.text.strip()
-
-    # Defensive cleanup - sometimes LLMs wrap JSON in ```json fences despite instructions
     if raw_text.startswith("```"):
-        raw_text = raw_text.strip("`")
-        raw_text = raw_text.replace("json", "", 1).strip()
+        raw_text = raw_text.strip("`").replace("json", "", 1).strip()
 
     try:
         parsed = json.loads(raw_text)
         return parsed["sub_questions"]
     except (json.JSONDecodeError, KeyError) as e:
         print(f"WARNING: Failed to parse planner output: {e}")
-        print(f"Raw output was: {raw_text}")
-        # Fallback: treat the whole query as a single sub-question, no ticker filter
-        return [{"question": query, "ticker": None}]
+        return [{"question": query, "ticker": None, "fiscal_year": None}]
 
 
 if __name__ == "__main__":
-    test_query = "How did Salesforce's and Workday's AI strategies differ?"
+    test_query = "How did Apple's and Microsoft's approaches to AI differ?"
     sub_questions = plan(test_query)
 
     print(f"Original question: {test_query}\n")
-    print("Decomposed into:")
     for sq in sub_questions:
-        print(f"  - [{sq['ticker']}] {sq['question']}")
+        print(f"  [{sq['ticker']} FY{sq['fiscal_year']}] {sq['question']}")

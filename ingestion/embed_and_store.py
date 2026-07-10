@@ -1,12 +1,15 @@
 from sentence_transformers import SentenceTransformer
 import chromadb
 import json
+import config
 
 CHUNKS_PATH = "data/processed/chunks.json"
 VECTOR_STORE_DIR = "vector_store"
 COLLECTION_NAME = "research_agent_10k"
-
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+
+BATCH_SIZE = 64  # embedding batch size - keeps memory usage reasonable at scale
+CHROMA_INSERT_BATCH = 500  # Chroma's per-call insert limit
 
 
 def load_chunks():
@@ -25,33 +28,41 @@ def embed_and_store():
     print("Setting up ChromaDB...")
     client = chromadb.PersistentClient(path=VECTOR_STORE_DIR)
 
-    # Recreate collection fresh each time we re-run ingestion, so old/stale
-    # data doesn't linger if chunking logic changes later
     try:
         client.delete_collection(COLLECTION_NAME)
     except Exception:
-        pass  # collection didn't exist yet, that's fine
+        pass
 
     collection = client.create_collection(COLLECTION_NAME)
 
     texts = [chunk["text"] for chunk in chunks]
     ids = [chunk["id"] for chunk in chunks]
-    metadatas = [{"ticker": chunk["ticker"], "chunk_index": chunk["chunk_index"]} for chunk in chunks]
+    metadatas = [
+        {
+            "ticker": chunk["ticker"],
+            "company": chunk["company"],
+            "fiscal_year": chunk["fiscal_year"],
+            "doc_id": chunk["doc_id"],
+            "chunk_index": chunk["chunk_index"]
+        }
+        for chunk in chunks
+    ]
 
-    print("Generating embeddings (this may take a couple minutes)...")
-    embeddings = model.encode(texts, show_progress_bar=True, batch_size=64)
+    print(f"Generating embeddings for {len(texts)} chunks (batch_size={BATCH_SIZE})...")
+    print("This will take a while at this scale - progress bar shows overall status.")
+    embeddings = model.encode(texts, show_progress_bar=True, batch_size=BATCH_SIZE)
 
     print("Storing in ChromaDB...")
-    # Chroma has a max batch size for adds, so we insert in batches to be safe
-    BATCH_SIZE = 500
-    for i in range(0, len(chunks), BATCH_SIZE):
+    total = len(chunks)
+    for i in range(0, total, CHROMA_INSERT_BATCH):
+        end = min(i + CHROMA_INSERT_BATCH, total)
         collection.add(
-            ids=ids[i:i+BATCH_SIZE],
-            embeddings=embeddings[i:i+BATCH_SIZE].tolist(),
-            documents=texts[i:i+BATCH_SIZE],
-            metadatas=metadatas[i:i+BATCH_SIZE]
+            ids=ids[i:end],
+            embeddings=embeddings[i:end].tolist(),
+            documents=texts[i:end],
+            metadatas=metadatas[i:end]
         )
-        print(f"  Stored batch {i}-{min(i+BATCH_SIZE, len(chunks))}")
+        print(f"  Stored {end}/{total}")
 
     print(f"\nDone. Total chunks stored: {collection.count()}")
 

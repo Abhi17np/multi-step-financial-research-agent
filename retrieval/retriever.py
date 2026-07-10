@@ -7,15 +7,25 @@ client = chromadb.PersistentClient(path=config.VECTOR_STORE_DIR)
 collection = client.get_collection(config.COLLECTION_NAME)
 
 
-def retrieve(query: str, top_k: int = 5, ticker_filter: str = None) -> list[dict]:
+def retrieve(query: str, top_k: int = 5, ticker_filter: str = None, fiscal_year_filter: str = None) -> list[dict]:
     """
     Embeds the query and searches ChromaDB for the top_k most similar chunks.
-    Optional ticker_filter restricts search to one company only (e.g. 'CRM'),
-    useful later when the planner generates company-specific sub-questions.
+    Supports filtering by ticker and/or fiscal_year - combined via $and when both given.
     """
     query_embedding = model.encode([query]).tolist()
 
-    where_clause = {"ticker": ticker_filter} if ticker_filter else None
+    conditions = []
+    if ticker_filter:
+        conditions.append({"ticker": ticker_filter})
+    if fiscal_year_filter:
+        conditions.append({"fiscal_year": fiscal_year_filter})
+
+    if len(conditions) == 2:
+        where_clause = {"$and": conditions}
+    elif len(conditions) == 1:
+        where_clause = conditions[0]
+    else:
+        where_clause = None
 
     results = collection.query(
         query_embeddings=query_embedding,
@@ -29,20 +39,18 @@ def retrieve(query: str, top_k: int = 5, ticker_filter: str = None) -> list[dict
             "id": results["ids"][0][i],
             "text": results["documents"][0][i],
             "ticker": results["metadatas"][0][i]["ticker"],
-            "distance": results["distances"][0][i]  # lower = more similar
+            "fiscal_year": results["metadatas"][0][i].get("fiscal_year"),
+            "distance": results["distances"][0][i]
         })
 
     return retrieved_chunks
 
 
 if __name__ == "__main__":
-    # Quick manual test
-    test_query = "What is Salesforce's AI strategy?"
-    results = retrieve(test_query, top_k=3)
-
-    print("\n--- Same query, filtered to CRM only ---")
-    filtered_results = retrieve(test_query, top_k=3, ticker_filter="CRM")
-    for r in filtered_results:
-        print(f"[{r['ticker']}] (distance: {r['distance']:.4f})")
+    test_query = "What is Apple's approach to AI?"
+    results = retrieve(test_query, top_k=3, ticker_filter="AAPL")
+    print(f"Query: {test_query}\n")
+    for r in results:
+        print(f"[{r['ticker']} FY{r['fiscal_year']}] (distance: {r['distance']:.4f})")
         print(r['text'][:300])
         print("---")

@@ -42,7 +42,7 @@ def query(request: QueryRequest):
             "verified_sufficient": r["verification"]["sufficient"],
             "verification_reason": r["verification"]["reason"],
             "top_chunks": [
-                {"ticker": c["ticker"], "text": c["text"][:300], "distance": c["distance"]}
+                {"ticker": c["ticker"], "text": c["text"][:300], "distance": c.get("distance")}
                 for c in r["chunks"][:3]
             ]
         })

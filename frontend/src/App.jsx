@@ -34,7 +34,7 @@ function App() {
     <div className="min-h-screen bg-slate-50 text-slate-800 p-8">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-2xl font-bold mb-1">Multi-Step Financial Research Agent</h1>
-        <p className="text-slate-500 mb-6">Agentic RAG over Salesforce, ServiceNow, Workday, and Adobe 10-K filings</p>
+        <p className="text-slate-500 mb-6">Agentic RAG over major public companies' 10-K filings</p>
 
         <div className="flex gap-3 mb-8">
           <input

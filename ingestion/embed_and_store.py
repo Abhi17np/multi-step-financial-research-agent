@@ -68,4 +68,5 @@ def embed_and_store():
 
 
 if __name__ == "__main__":
+    
     embed_and_store()
